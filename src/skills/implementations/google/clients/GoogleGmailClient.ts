@@ -26,4 +26,18 @@ export class GoogleGmailClient {
       throw new Error(`Failed to list messages: ${error}`);
     }
   }
+
+  async getMessageDetails(messageId: string) {
+    try {
+      await this.authProvider.ensureValidToken();
+      
+      return this.gmail.users.messages.get({
+        userId: "me",
+        id: messageId,
+        format: "full",
+      });
+    } catch (error) {
+      throw new Error(`Failed to get message details: ${error}`);
+    }
+  }
 }
