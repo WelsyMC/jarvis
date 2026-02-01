@@ -87,12 +87,10 @@ export class CronSkill extends SkillBase {
 
             // Générer une confirmation avec l'IA
             const delayText = this.formatDelay(cronData.delaySeconds);
-            const confirmationPrompt = `L'utilisateur a demandé un rappel. Confirme-lui brièvement que tu lui enverras un message dans ${delayText}. Sois concis.`;
-            const confirmation = await sendMessageToAI(confirmationPrompt);
 
             return {
                 success: true,
-                message: confirmation,
+                message: "Tâche planifiée.",
                 requiresResponse: true,
                 responseData: { taskId, delayText, skillName: 'cron' }
             };

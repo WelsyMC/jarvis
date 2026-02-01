@@ -6,6 +6,7 @@ import { Update, Message } from "telegraf/typings/core/types/typegram";
 import { CronSkill } from "./implementations/CronSkill";
 import { WebSearchSkill } from "./implementations/WebSearchSkill";
 import { SystemInfoSkill } from "./implementations/SystemInfoSkill";
+import { CalculatorSkill } from "./implementations/CalculatorSkill";
 
 /**
  * Interface pour l'enregistrement des skills
@@ -49,7 +50,8 @@ export class SkillManager {
     private registerDefaultSkills() {
         this.registerSkill(new CronSkill());
         this.registerSkill(new WebSearchSkill());
-        this.registerSkill(new SystemInfoSkill()); // Activé pour démonstration
+        this.registerSkill(new SystemInfoSkill());
+        this.registerSkill(new CalculatorSkill()); // Activé pour démonstration
     }
 
     /**
