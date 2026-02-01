@@ -68,7 +68,7 @@ export class GoogleGmailSkill extends SkillBase {
         if (!response || !response.data.messages) {
             return {
                 success: true,
-                message: "No messages found in the inbox.",
+                message: "Boite de réception vide.",
                 requiresResponse: false,
                 responseData: {}
             };
@@ -87,9 +87,11 @@ export class GoogleGmailSkill extends SkillBase {
         
         return {
             success: true,
-            message: "GMail executed successfully.",
+            message: "Aucun nouveau mail à lire.",
             requiresResponse: true,
-            responseData: {}
+            responseData: {
+                message: "Aucun nouveau mail à lire."
+            }
         };
     }
 
