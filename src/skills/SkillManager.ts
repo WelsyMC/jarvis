@@ -4,7 +4,7 @@ import { Update, Message } from "telegraf/typings/core/types/typegram";
 
 // Import des skills disponibles
 import { CronSkill } from "./implementations/CronSkill";
-import { WebSearchSkill } from "./implementations/Web/WebSearchSkill";
+import { WebSearchSkill } from "./implementations/web/WebSearchSkill";
 import { SystemInfoSkill } from "./implementations/SystemInfoSkill";
 import { CalculatorSkill } from "./implementations/CalculatorSkill";
 

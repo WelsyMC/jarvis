@@ -6,5 +6,5 @@ export { SkillManager, skillManager, type SkillRegistration } from "./SkillManag
 
 // Export des skills implémentés
 export { CronSkill, type CronSkillData } from "./implementations/CronSkill";
-export { WebSearchSkill, type WebSearchSkillData } from "./implementations/Web/WebSearchSkill";
+export { WebSearchSkill, type WebSearchSkillData } from "./implementations/web/WebSearchSkill";
 export { SystemInfoSkill, type SystemInfoSkillData } from "./implementations/SystemInfoSkill";
