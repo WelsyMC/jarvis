@@ -1,0 +1,352 @@
+import puppeteer, { Browser, Page } from 'puppeteer';
+import { sendMessageToAI } from './ai_bridge';
+
+export interface SearchResult {
+    title: string;
+    link: string;
+    snippet: string;
+}
+
+export interface WebSearchResponse {
+    query: string;
+    results: SearchResult[];
+    summary: string;
+}
+
+export class BrowserBridge {
+    private browser: Browser | null = null;
+    private isLaunched = false;
+
+    /**
+     * Lance le navigateur Puppeteer
+     */
+    private async launchBrowser(): Promise<Browser> {
+        if (this.browser && this.isLaunched) {
+            try {
+                // Vérifier si le navigateur est toujours actif
+                const pages = await this.browser.pages();
+                return this.browser;
+            } catch (error) {
+                console.log('[BROWSER] Navigateur existant fermé, relancement...');
+                this.browser = null;
+                this.isLaunched = false;
+            }
+        }
+
+        console.log('[BROWSER] Lancement de Puppeteer...');
+        this.browser = await puppeteer.launch({
+            headless: "new", // Utilise le nouveau mode headless
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--no-zygote',
+                '--single-process'
+            ],
+            timeout: 30000 // 30 secondes de timeout
+        });
+        this.isLaunched = true;
+        console.log('[BROWSER] Puppeteer lancé avec succès');
+        return this.browser;
+    }
+
+    /**
+     * Effectue une recherche Google et navigue sur les premiers liens
+     */
+    async performWebSearch(query: string): Promise<WebSearchResponse> {
+        let browser: Browser | null = null;
+        let page: Page | null = null;
+
+        try {
+            console.log(`[BROWSER] Recherche web pour: "${query}"`);
+            
+            browser = await this.launchBrowser();
+            page = await browser.newPage();
+            
+            // Configurer la page
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+            await page.setViewport({ width: 1920, height: 1080 });
+            
+            // Étape 1: Recherche Google avec DuckDuckGo (plus fiable)
+            const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+            console.log(`[BROWSER] Navigation vers: ${searchUrl}`);
+            
+            await page.goto(searchUrl, { 
+                waitUntil: 'networkidle2', 
+                timeout: 20000 
+            });
+            
+            // Attendre que les résultats se chargent
+            await page.waitForSelector('article[data-testid="result"]', { timeout: 15000 });
+
+            // Extraire les résultats de recherche
+            const searchResults = await this.extractDuckDuckGoResults(page);
+            console.log(`[BROWSER] ${searchResults.length} résultats trouvés`);
+
+            if (searchResults.length === 0) {
+                throw new Error('Aucun résultat de recherche trouvé');
+            }
+
+            // Étape 2: Naviguer sur les premiers liens et extraire le contenu
+            const linkContents: string[] = [];
+            const maxLinks = Math.min(2, searchResults.length); // Naviguer sur maximum 2 liens pour être plus rapide
+
+            for (let i = 0; i < maxLinks; i++) {
+                try {
+                    const result = searchResults[i];
+                    console.log(`[BROWSER] Navigation sur: ${result.title}`);
+                    
+                    const content = await this.extractContentFromUrl(browser, result.link);
+                    if (content && content.length > 100) { // Seulement si le contenu est suffisant
+                        linkContents.push(`=== ${result.title} ===\n${content}\n\n`);
+                    }
+                } catch (error) {
+                    console.warn(`[BROWSER] Erreur lors de l'extraction du lien ${i + 1}:`, error);
+                }
+            }
+
+            // Étape 3: Envoyer le contexte à l'IA pour synthèse
+            const contextForAI = this.buildContextForAI(query, searchResults, linkContents);
+            console.log('[BROWSER] Envoi du contexte à l\'IA pour synthèse...');
+            
+            const aiSummary = await sendMessageToAI(contextForAI);
+
+            return {
+                query,
+                results: searchResults,
+                summary: aiSummary
+            };
+
+        } catch (error) {
+            console.error('[BROWSER] Erreur lors de la recherche web:', error);
+            throw error;
+        } finally {
+            if (page) {
+                try {
+                    await page.close();
+                } catch (e) {
+                    console.warn('[BROWSER] Erreur lors de la fermeture de la page:', e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Extrait les résultats de recherche de DuckDuckGo
+     */
+    private async extractDuckDuckGoResults(page: Page): Promise<SearchResult[]> {
+        return await page.evaluate(() => {
+            const results: SearchResult[] = [];
+            
+            // Sélecteurs pour les résultats de recherche DuckDuckGo
+            const resultElements = document.querySelectorAll('article[data-testid="result"]');
+            
+            for (let i = 0; i < Math.min(5, resultElements.length); i++) {
+                const element = resultElements[i];
+                
+                const titleElement = element.querySelector('h2 a');
+                const snippetElement = element.querySelector('[data-result="snippet"]');
+                
+                if (titleElement && titleElement.href) {
+                    const title = titleElement.textContent?.trim() || '';
+                    const link = titleElement.href;
+                    const snippet = snippetElement?.textContent?.trim()?.substring(0, 200) || '';
+
+                    if (title && link) {
+                        results.push({
+                            title,
+                            link,
+                            snippet
+                        });
+                    }
+                }
+            }
+            
+            return results;
+        });
+    }
+
+    /**
+     * Extrait les résultats de recherche de la page Google (backup)
+     */
+    private async extractSearchResults(page: Page): Promise<SearchResult[]> {
+        return await page.evaluate(() => {
+            const results: SearchResult[] = [];
+            
+            // Sélecteurs pour les résultats de recherche Google
+            const resultElements = document.querySelectorAll('div[data-ved] h3');
+            
+            for (let i = 0; i < Math.min(5, resultElements.length); i++) {
+                const titleElement = resultElements[i];
+                const linkElement = titleElement.closest('a');
+                
+                if (linkElement && titleElement.textContent) {
+                    const title = titleElement.textContent.trim();
+                    const link = linkElement.href;
+                    
+                    // Essayer de trouver le snippet
+                    const parentDiv = titleElement.closest('div[data-ved]');
+                    let snippet = '';
+                    
+                    if (parentDiv) {
+                        const snippetElements = parentDiv.querySelectorAll('span, div');
+                        for (const elem of snippetElements) {
+                            if (elem.textContent && elem.textContent.length > 50 && !elem.querySelector('h3')) {
+                                snippet = elem.textContent.trim().substring(0, 200);
+                                break;
+                            }
+                        }
+                    }
+
+                    results.push({
+                        title,
+                        link,
+                        snippet
+                    });
+                }
+            }
+            
+            return results;
+        });
+    }
+
+    /**
+     * Extrait le contenu textuel d'une URL
+     */
+    private async extractContentFromUrl(browser: Browser, url: string): Promise<string | null> {
+        let page: Page | null = null;
+        
+        try {
+            page = await browser.newPage();
+            
+            // Configurer la page pour éviter les problèmes
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+            
+            await page.goto(url, { 
+                waitUntil: 'domcontentloaded',
+                timeout: 10000 
+            });
+
+            // Attendre un peu que la page se charge
+            await page.waitForTimeout(2000);
+
+            // Extraire le contenu textuel principal
+            const content = await page.evaluate(() => {
+                // Supprimer les scripts, styles et éléments non pertinents
+                const elementsToRemove = document.querySelectorAll('script, style, nav, footer, header, aside, .ad, .advertisement, .popup, .modal');
+                elementsToRemove.forEach(el => el.remove());
+
+                // Essayer de trouver le contenu principal
+                const mainSelectors = [
+                    'main',
+                    'article', 
+                    '.content',
+                    '.post-content',
+                    '.entry-content',
+                    '#content',
+                    '.main-content',
+                    '[role="main"]'
+                ];
+
+                let mainContent = null;
+                for (const selector of mainSelectors) {
+                    const element = document.querySelector(selector);
+                    if (element && element.textContent && element.textContent.length > 200) {
+                        mainContent = element;
+                        break;
+                    }
+                }
+
+                // Si aucun contenu principal trouvé, utiliser le body
+                if (!mainContent) {
+                    mainContent = document.body;
+                }
+
+                // Extraire le texte et le nettoyer
+                const text = mainContent?.textContent || '';
+                return text
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .substring(0, 1500); // Limiter à 1500 caractères
+            });
+
+            return content.length > 100 ? content : null;
+
+        } catch (error) {
+            console.warn(`[BROWSER] Impossible d'extraire le contenu de ${url}:`, error.message);
+            return null;
+        } finally {
+            if (page) {
+                try {
+                    await page.close();
+                } catch (e) {
+                    console.warn('[BROWSER] Erreur lors de la fermeture de la page d\'extraction:', e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Construit le contexte pour l'IA avec les résultats de recherche et le contenu des liens
+     */
+    private buildContextForAI(query: string, searchResults: SearchResult[], linkContents: string[]): string {
+        let context = `Tu dois synthétiser une recherche web pour répondre à la question: "${query}"\n\n`;
+        
+        context += `RÉSULTATS DE RECHERCHE TROUVÉS:\n`;
+        searchResults.forEach((result, index) => {
+            context += `${index + 1}. ${result.title}\n`;
+            context += `   ${result.snippet}\n`;
+            context += `   ${result.link}\n\n`;
+        });
+
+        if (linkContents.length > 0) {
+            context += `\nCONTENU EXTRAIT DES LIENS VISITÉS:\n\n`;
+            context += linkContents.join('');
+        }
+
+        context += `\nINSTRUCTIONS:\n`;
+        context += `- Synthétise les informations les plus pertinentes pour répondre à la question\n`;
+        context += `- Cite tes sources quand possible\n`;
+        context += `- Sois concis mais informatif\n`;
+        context += `- Si tu n'as pas trouvé d'informations suffisantes, dis-le clairement\n\n`;
+        context += `Réponds maintenant à la question de l'utilisateur:`;
+
+        return context;
+    }
+
+    /**
+     * Ferme le navigateur
+     */
+    async closeBrowser(): Promise<void> {
+        if (this.browser && this.isLaunched) {
+            console.log('[BROWSER] Fermeture de Puppeteer...');
+            await this.browser.close();
+            this.browser = null;
+            this.isLaunched = false;
+        }
+    }
+
+    /**
+     * Destructeur - ferme automatiquement le navigateur
+     */
+    async destroy(): Promise<void> {
+        await this.closeBrowser();
+    }
+}
+
+// Instance singleton du bridge navigateur
+export const browserBridge = new BrowserBridge();
+
+// Gérer la fermeture propre du navigateur à l'arrêt du processus
+process.on('SIGINT', async () => {
+    await browserBridge.destroy();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    await browserBridge.destroy();
+    process.exit(0);
+});

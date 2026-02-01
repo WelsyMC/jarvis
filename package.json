@@ -1,0 +1,27 @@
+{
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "nodemon": "^3.1.11",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "name": "j.a.r.v.i.s",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@types/puppeteer": "^5.4.7",
+    "dotenv": "^17.2.3",
+    "puppeteer": "^24.36.1",
+    "telegraf": "^4.16.3",
+    "undici-types": "^7.16.0"
+  },
+  "scripts": {
+    "start": "tsx ./src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec tsx ./src/index.ts",
+    "build": "tsc",
+    "prod": "node ./dist/index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
