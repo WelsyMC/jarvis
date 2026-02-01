@@ -56,29 +56,45 @@ export class TelegramBot {
      * Gère les messages privés reçus
      */
     private handlePrivateMessage(ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>) {
-        if("text" in ctx.message){
+        if ("text" in ctx.message) {
             let text = ctx.message.text;
             const userId = ctx.from.id.toString();
-            
+
             console.log("=".repeat(50));
             console.log(`[TELEGRAM] Message reçu de ${ctx.from.username || ctx.from.id}: ${text}`);
             ctx.sendChatAction("typing").then(async () => {
                 try {
                     // ÉTAPE 1: Détection des skills
                     const skillDetection = await detectSkills(text);
-                    
+
                     // Afficher le message de détection sur Telegram
                     await ctx.reply(`🔍 Détection de skills:\n\n${skillDetection}`);
-                    
+
                     // ÉTAPE 2: Traitement via le gestionnaire de skills
                     const skillResult = await skillManager.processSkillDetection(skillDetection, ctx, userId);
-                    
+
                     if (skillResult) {
                         // Un skill a été exécuté
                         if (skillResult.success && skillResult.requiresResponse && skillResult.message) {
-                            // Afficher la réponse du skill
-                            const parseMode = skillResult.message.includes('*') || skillResult.message.includes('_') ? 'MarkdownV2' : undefined;
-                            await ctx.reply(`💬 Réponse:\n\n${skillResult.message}`, parseMode ? { parse_mode: parseMode } : {});
+                            // si le skill n'est pas web_search, regarder si il faut envoyer toutes les infos ou juste une partie
+                            if ("web_search" !== skillResult.responseData?.skillName) {
+                                // Sûrement un skill système du coup, on filtre ce qu'il y a a savoir.
+                                const aiFinalAnswer = await sendMessageToAI(
+                                    `Analyse la question que je vais te poser, analyse la réponse que je te donne, et réponds moi seulement avec les informations qui m'intéressent.
+                                    
+                                    Question: ${text}
+                                    Réponse à filtrer: ${skillResult.message}
+                                    `
+                                );
+
+                                const parseMode = aiFinalAnswer.includes('*') || aiFinalAnswer.includes('_') ? 'MarkdownV2' : undefined;
+                                await ctx.reply(`💬 Réponse:\n\n${aiFinalAnswer}`, parseMode ? { parse_mode: parseMode } : {});
+                            } else {
+                                // Skill web_search, formater la réponse
+                                const parseMode = skillResult.message.includes('*') || skillResult.message.includes('_') ? 'MarkdownV2' : undefined;
+                                await ctx.reply(`💬 Réponse:\n\n${skillResult.message}`, parseMode ? { parse_mode: parseMode } : {});
+                            }
+
                         } else if (!skillResult.success && skillResult.error) {
                             // Afficher l'erreur
                             await ctx.reply(skillResult.error);
