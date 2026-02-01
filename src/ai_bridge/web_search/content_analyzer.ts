@@ -5,6 +5,7 @@ import { ContentAnalysis, PageContent } from './types';
  * Responsabilité: Demander à l'IA d'évaluer si un contenu répond à la question
  * 
  * IMPORTANT: Prompts courts et segmentés pour éviter de perdre le contexte de l'IA
+ * L'IA doit CITER EXACTEMENT les données, pas les inventer
  */
 export class ContentAnalyzer {
     
@@ -24,24 +25,41 @@ export class ContentAnalyzer {
             const truncatedContent = pageContent.content.substring(0, 3000);
 
             // Prompt court et structuré pour l'IA locale
-            const analysisPrompt = `ANALYSE DE CONTENU WEB
+            // IMPORTANT: On demande de CITER EXACTEMENT, pas d'interpréter
+            const analysisPrompt = `EXTRACTION DE DONNÉES
 
 QUESTION: "${query}"
 
-CONTENU DU SITE:
+TEXTE DU SITE:
 ${truncatedContent}
 
 ---
-RÉPONDS EXACTEMENT DANS CE FORMAT:
-PERTINENT: [OUI/NON]
-CONFIANCE: [HAUTE/MOYENNE/BASSE]
-INFO: [Résume en 2-3 phrases l'information trouvée si pertinente, sinon écris "Aucune info utile"]
-RAISON: [Explique en 1 phrase pourquoi c'est pertinent ou non]`;
+RÈGLES STRICTES:
+- CITE EXACTEMENT les chiffres/données du texte, ne les invente pas
+- Si tu ne trouves pas la donnée exacte dans le texte, écris "NON TROUVÉ"
+- Copie-colle la phrase exacte qui contient la réponse
+
+RÉPONDS DANS CE FORMAT:
+TROUVÉ: [OUI/NON]
+DONNÉE EXACTE: [Copie la phrase exacte du texte qui répond à la question, ou "Aucune"]
+VALEUR: [Le chiffre/donnée extrait, ou "Inconnu"]`;
 
             const aiResponse = await sendToAI(analysisPrompt);
+            console.log(`[CONTENT_ANALYZER] Réponse IA: ${aiResponse.substring(0, 200)}...`);
             
             // Parser la réponse de l'IA
-            return this.parseAnalysisResponse(aiResponse);
+            const analysis = this.parseAnalysisResponse(aiResponse, truncatedContent);
+            
+            // Validation: vérifier que la donnée citée existe vraiment dans le contenu
+            if (analysis.isRelevant && analysis.extractedInfo) {
+                const isValid = this.validateExtractedData(analysis.extractedInfo, truncatedContent);
+                if (!isValid) {
+                    console.log(`[CONTENT_ANALYZER] ⚠️ Donnée non validée dans le contenu source`);
+                    analysis.confidence = 'low';
+                }
+            }
+            
+            return analysis;
 
         } catch (error) {
             console.error(`[CONTENT_ANALYZER] Erreur d'analyse:`, error);
@@ -55,38 +73,82 @@ RAISON: [Explique en 1 phrase pourquoi c'est pertinent ou non]`;
     }
 
     /**
+     * Valide que les données extraites existent vraiment dans le contenu source
+     */
+    private validateExtractedData(extractedInfo: string, sourceContent: string): boolean {
+        // Extraire les nombres de l'info extraite
+        const numbersInExtracted = extractedInfo.match(/\d+[,.]?\d*/g) || [];
+        
+        if (numbersInExtracted.length === 0) {
+            return true; // Pas de nombres à valider
+        }
+
+        // Vérifier qu'au moins un nombre significatif existe dans la source
+        for (const num of numbersInExtracted) {
+            // Normaliser le nombre (remplacer virgule par point)
+            const normalizedNum = num.replace(',', '.');
+            const numValue = parseFloat(normalizedNum);
+            
+            // Ignorer les petits nombres (1, 2, etc.) qui sont trop communs
+            if (numValue < 10 && !num.includes(',') && !num.includes('.')) {
+                continue;
+            }
+
+            // Chercher ce nombre dans la source (avec variantes)
+            const variations = [
+                num,
+                num.replace(',', '.'),
+                num.replace('.', ','),
+            ];
+            
+            const foundInSource = variations.some(v => sourceContent.includes(v));
+            if (foundInSource) {
+                console.log(`[CONTENT_ANALYZER] ✓ Nombre "${num}" trouvé dans la source`);
+                return true;
+            }
+        }
+
+        console.log(`[CONTENT_ANALYZER] ✗ Nombres non trouvés dans la source: ${numbersInExtracted.join(', ')}`);
+        return false;
+    }
+
+    /**
      * Parse la réponse de l'IA pour extraire les informations structurées
      */
-    private parseAnalysisResponse(response: string): ContentAnalysis {
+    private parseAnalysisResponse(response: string, sourceContent: string): ContentAnalysis {
         const upperResponse = response.toUpperCase();
         
-        // Déterminer si pertinent
-        const isRelevant = upperResponse.includes('PERTINENT: OUI') || 
-                          upperResponse.includes('PERTINENT:OUI') ||
-                          (upperResponse.includes('PERTINENT') && upperResponse.includes('OUI'));
+        // Déterminer si trouvé
+        const isRelevant = upperResponse.includes('TROUVÉ: OUI') || 
+                          upperResponse.includes('TROUVÉ:OUI') ||
+                          (upperResponse.includes('TROUVÉ') && !upperResponse.includes('NON TROUVÉ') && upperResponse.includes('OUI'));
 
-        // Déterminer le niveau de confiance
-        let confidence: 'high' | 'medium' | 'low' | 'none' = 'none';
-        if (upperResponse.includes('CONFIANCE: HAUTE') || upperResponse.includes('CONFIANCE:HAUTE')) {
-            confidence = 'high';
-        } else if (upperResponse.includes('CONFIANCE: MOYENNE') || upperResponse.includes('CONFIANCE:MOYENNE')) {
-            confidence = 'medium';
-        } else if (upperResponse.includes('CONFIANCE: BASSE') || upperResponse.includes('CONFIANCE:BASSE')) {
-            confidence = 'low';
-        }
-
-        // Extraire l'info trouvée
+        // Extraire la donnée exacte citée
         let extractedInfo = '';
-        const infoMatch = response.match(/INFO:\s*(.+?)(?=\nRAISON:|$)/is);
-        if (infoMatch) {
-            extractedInfo = infoMatch[1].trim();
+        const dataMatch = response.match(/DONNÉE EXACTE:\s*(.+?)(?=\nVALEUR:|$)/is);
+        if (dataMatch && dataMatch[1].trim().toLowerCase() !== 'aucune') {
+            extractedInfo = dataMatch[1].trim();
         }
 
-        // Extraire la raison
-        let reason = '';
-        const reasonMatch = response.match(/RAISON:\s*(.+?)$/is);
-        if (reasonMatch) {
-            reason = reasonMatch[1].trim();
+        // Extraire la valeur
+        let value = '';
+        const valueMatch = response.match(/VALEUR:\s*(.+?)$/is);
+        if (valueMatch && valueMatch[1].trim().toLowerCase() !== 'inconnu') {
+            value = valueMatch[1].trim();
+            // Ajouter la valeur à l'info si elle n'y est pas déjà
+            if (value && !extractedInfo.includes(value)) {
+                extractedInfo = extractedInfo ? `${extractedInfo} (${value})` : value;
+            }
+        }
+
+        // Déterminer la confiance basée sur la qualité de l'extraction
+        let confidence: 'high' | 'medium' | 'low' | 'none' = 'none';
+        if (isRelevant && extractedInfo && extractedInfo.length > 10) {
+            confidence = 'high';
+        } else if (isRelevant && extractedInfo) {
+            confidence = 'medium';
+        } else if (isRelevant) {
+            confidence = 'low';
         }
 
         console.log(`[CONTENT_ANALYZER] Résultat: pertinent=${isRelevant}, confiance=${confidence}`);
@@ -95,7 +157,7 @@ RAISON: [Explique en 1 phrase pourquoi c'est pertinent ou non]`;
             isRelevant,
             confidence,
             extractedInfo,
-            reason
+            reason: isRelevant ? 'Donnée trouvée dans le contenu' : 'Donnée non trouvée'
         };
     }
 
@@ -131,12 +193,16 @@ RAISON: [Explique en 1 phrase pourquoi c'est pertinent ou non]`;
 
 QUESTION: "${query}"
 
-INFORMATIONS COLLECTÉES:
+DONNÉES EXTRAITES DES SITES:
 ${infoContext}
 
 ---
-Rédige une réponse complète et précise basée UNIQUEMENT sur ces informations.
-Sois concis mais informatif. Réponds en français.`;
+RÈGLES:
+- Utilise UNIQUEMENT les données ci-dessus
+- Ne modifie pas les chiffres, cite-les exactement
+- Sois concis et direct
+
+Réponds à la question en français:`;
 
         return await sendToAI(synthesisPrompt);
     }
