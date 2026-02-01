@@ -1,6 +1,4 @@
-import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult } from "../base/SkillBase";
-import { Context, NarrowedContext } from "telegraf";
-import { Update, Message } from "telegraf/typings/core/types/typegram";
+import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult, IMessageSender } from "../base/SkillBase";
 import { CronBridge, cronBridge } from "../../ai_bridge/cron_bridge";
 import { sendMessageToAI } from "../../ai_bridge/ai_bridge";
 
@@ -67,8 +65,8 @@ export class CronSkill extends SkillBase {
      */
     public async execute(
         data: SkillData,
-        ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>,
-        userId: string
+        userId: string,
+        messageSender: IMessageSender
     ): Promise<SkillExecutionResult> {
         try {
             const cronData = data as CronSkillData;
@@ -89,14 +87,14 @@ export class CronSkill extends SkillBase {
 
             // Générer une confirmation avec l'IA
             const delayText = this.formatDelay(cronData.delaySeconds);
-            const confirmationPrompt = `L'utilisateur a demandé un rappel. Confirme-lui brièvement que tu lui enverras un message dans ${delayText}.`;
+            const confirmationPrompt = `L'utilisateur a demandé un rappel. Confirme-lui brièvement que tu lui enverras un message dans ${delayText}. Sois concis.`;
             const confirmation = await sendMessageToAI(confirmationPrompt);
 
             return {
                 success: true,
                 message: confirmation,
                 requiresResponse: true,
-                responseData: { taskId, delayText }
+                responseData: { taskId, delayText, skillName: 'cron' }
             };
 
         } catch (error) {

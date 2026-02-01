@@ -2,6 +2,13 @@ import { Context, NarrowedContext } from "telegraf";
 import { Update, Message } from "telegraf/typings/core/types/typegram";
 
 /**
+ * Interface pour envoyer des messages à l'utilisateur
+ */
+export interface IMessageSender {
+    sendMessage(userId: string, message: string, parseMode?: 'MarkdownV2' | 'Markdown' | 'HTML'): Promise<void>;
+}
+
+/**
  * Interface pour les données parseées d'un skill
  */
 export interface SkillData {
@@ -51,14 +58,14 @@ export abstract class SkillBase {
     /**
      * Exécute le skill avec les données fournies
      * @param data Les données parseées du skill
-     * @param ctx Le contexte Telegram
      * @param userId L'ID de l'utilisateur
+     * @param messageSender Interface pour envoyer des messages
      * @returns Résultat de l'exécution
      */
     public abstract execute(
         data: SkillData,
-        ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>,
-        userId: string
+        userId: string,
+        messageSender: IMessageSender
     ): Promise<SkillExecutionResult>;
 
     /**

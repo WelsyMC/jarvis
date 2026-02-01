@@ -2,7 +2,7 @@
  * Cron Bridge - Permet de planifier des tâches qui seront exécutées après un délai
  */
 
-import { sendMessageToAI } from './ai_bridge';
+import { skillManager } from '../skills';
 
 interface ScheduledTask {
     id: string;
@@ -75,11 +75,16 @@ export class CronBridge {
         task.executed = true;
 
         try {
-            // Re-donner le prompt original à l'IA
-            const aiResponse = await sendMessageToAI(task.originalPrompt);
+            // Utiliser le système de skills pour traiter le prompt
+            const result = await skillManager.executePromptWithSkills(
+                task.originalPrompt,
+                task.userId
+            );
+            
+            console.log(`[CRON] Skills utilisés: ${result.skillsUsed.join(', ') || 'aucun'}`);
             
             // Envoyer la réponse à l'utilisateur via Telegram
-            await this.onTaskComplete(task.userId, aiResponse);
+            await this.onTaskComplete(task.userId, result.response);
             
             console.log(`[CRON] Tâche complétée avec succès: ${taskId}`);
         } catch (error) {

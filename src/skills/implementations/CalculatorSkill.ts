@@ -74,8 +74,8 @@ export class CalculatorSkill extends SkillBase {
      */
     public async execute(
         data: SkillData,
-        ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>,
-        userId: string
+        userId: string,
+        messageSender: any
     ): Promise<SkillExecutionResult> {
         try {
             const calcData = data as CalculatorSkillData;
@@ -106,7 +106,7 @@ export class CalculatorSkill extends SkillBase {
                 success: true,
                 message: message,
                 requiresResponse: true,
-                responseData: { expression: formattedExpression, result }
+                responseData: { expression: formattedExpression, result, skillName: 'calculator' }
             };
 
         } catch (error) {

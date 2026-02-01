@@ -27,21 +27,32 @@ export class SystemPromptManager {
                 // Ajouter des exemples spécifiques pour les skills connus
                 if (skillInfo.name === 'cron') {
                     skillsSection += `   - Mots-clés: "dans X secondes/minutes/heures", "rappelle-moi", "dis-moi dans", etc.
+   - IMPORTANT: Le prompt contient ce que l'utilisateur veut savoir AU MOMENT de l'exécution, pas une réponse
    - Format de sortie:
      [SKILL: cron]
-     Prompt: "message à envoyer plus tard"
+     Prompt: "question à poser plus tard"
      Délai: Xs/Xm/Xh
    
    Exemples:
+   User: "Dis-moi l'heure dans 10 secondes"
+   → [SKILL: cron]
+      Prompt: "Quelle heure est-il?"
+      Délai: 10s
+   
    User: "Dis moi bonjour dans 10 secondes"
    → [SKILL: cron]
-      Prompt: "Bonjour !"
+      Prompt: "Dis-moi bonjour"
       Délai: 10s
      
    User: "Rappelle-moi de faire les courses dans 2 heures"
    → [SKILL: cron]
       Prompt: "N'oublie pas de faire les courses !"
-      Délai: 2h\n\n`;
+      Délai: 2h
+      
+   User: "Dans 1 minute, donne-moi la météo à Paris"
+   → [SKILL: cron]
+      Prompt: "Quelle est la météo à Paris?"
+      Délai: 1m\n\n`;
       
                 } else if (skillInfo.name === 'web_search') {
                     skillsSection += `   - Questions nécessitant des données récentes, météo, actualités, infos spécifiques, sport, résultats sportifs
@@ -158,12 +169,61 @@ export class SystemPromptManager {
         
         RÈGLES:
         - Si AUCUN skill n'est nécessaire, réponds UNIQUEMENT: [NO_SKILL]
+        - Tu peux détecter PLUSIEURS skills si nécessaire et les ENCHAÎNER dans l'ordre logique
+        - Les skills peuvent être chaînés: l'output d'un skill est passé en contexte au suivant
+        - Ordonne les skills logiquement (ex: cron -> web_search, system_info -> web_search)
         - Ne réponds PAS à la question de l'utilisateur, détecte juste les skills
         - Pour une conversation normale, réponds: [NO_SKILL]
         - Questions rhétoriques/conversation = [NO_SKILL]
         - ATTENTION: "Qui a mis le but" = demande de connaître le BUTEUR/GOAL SCORER, pas qui a choisi le stade
         - "Mettre un but" en sport = MARQUER un but, scorer un goal
         - Analyse le contexte sportif correctement: but = goal, pas stade ou infrastructure
+        
+        IMPORTANT POUR LE SKILL CRON:
+        - Le skill cron sert à PLANIFIER une tâche pour plus tard
+        - Le prompt du cron doit contenir EXACTEMENT ce que l'utilisateur veut savoir à ce moment-là
+        - Exemple: "Dis-moi l'heure dans 5 secondes" → Le prompt devrait être "Quelle heure est-il?"
+        - NE PAS répondre immédiatement à la question, juste planifier
+        - Le cron peut être chaîné avec d'autres skills: cron planifiera l'exécution de l'autre skill
+        
+        CHAÎNAGE DE SKILLS:
+        - Les skills s'exécutent en séquence
+        - Chaque skill reçoit les résultats des skills précédents en contexte
+        - Chaque skill supplémentaire est préfixé par une flèche →
+        - Exemples de chaînage:
+          
+          User: "Dis-moi qui a marqué la finale de la CAN 2026 dans 5 secondes"
+          [SKILL: cron]
+          Prompt: "Qui a marqué la finale de la coupe d'afrique nations 2026 ?"
+          Délai: 5s
+          → [SKILL: web_search]
+             Query: "buteur finale coupe afrique nations 2026"
+          
+          User: "Dans 10 secondes cherche sur internet la météo à Paris et dis-moi l'heure"
+          [SKILL: cron]
+          Prompt: "Cherche la météo à Paris et dis-moi l'heure"
+          Délai: 10s
+          → [SKILL: system_info]
+             Type: "time"
+          → [SKILL: web_search]
+             Query: "météo à Paris aujourd'hui"
+          
+          User: "Donne-moi les infos système et cherche les news sur l'IA"
+          [SKILL: system_info]
+          Type: "all"
+          → [SKILL: web_search]
+             Query: "dernières actualités intelligence artificielle"
+        
+        FORMAT POUR PLUSIEURS SKILLS:
+        - Chaque skill sur sa ligne avec ses paramètres indentés
+        - Skills supplémentaires commencent par → à la même indentation que [SKILL:
+        - Cron TOUJOURS en premier s'il y en a un
+        - Les autres skills dans l'ordre logique
+        
+        IMPORTANT:
+        - Les flèches → indiquent que le skill suivant est chaîné
+        - Les skills chaînés reçoivent les résultats des skills précédents
+        - Le contexte est passé automatiquement lors de l'exécution
         ${examplesSection}
         `;
     }

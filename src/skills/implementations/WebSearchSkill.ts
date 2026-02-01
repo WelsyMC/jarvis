@@ -1,6 +1,4 @@
-import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult } from "../base/SkillBase";
-import { Context, NarrowedContext } from "telegraf";
-import { Update, Message } from "telegraf/typings/core/types/typegram";
+import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult, IMessageSender } from "../base/SkillBase";
 import { webSearchBridge, WebSearchResponse, WebSearchProgressCallback } from "../../ai_bridge/web_search_bridge";
 
 /**
@@ -48,8 +46,8 @@ export class WebSearchSkill extends SkillBase {
      */
     public async execute(
         data: SkillData,
-        ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>,
-        userId: string
+        userId: string,
+        messageSender: IMessageSender
     ): Promise<SkillExecutionResult> {
         try {
             const searchData = data as WebSearchSkillData;
@@ -62,7 +60,8 @@ export class WebSearchSkill extends SkillBase {
             }
 
             // Message de progression initial
-            const progressMessage = await ctx.reply("🌐 Recherche web en cours...\n📊 Progression: 0/10 sites analysés");
+            const progressMessage = { id: 0, text: "🌐 Recherche web en cours...\n📊 Progression: 0/10 sites analysés" };
+            await messageSender.sendMessage(userId, progressMessage.text);
             
             let lastProgressUpdate = Date.now();
             const minUpdateInterval = 2000; // Minimum 2s entre les mises à jour
@@ -73,12 +72,8 @@ export class WebSearchSkill extends SkillBase {
                 // Limiter les mises à jour pour ne pas surcharger Telegram
                 if (now - lastProgressUpdate >= minUpdateInterval) {
                     try {
-                        await ctx.telegram.editMessageText(
-                            ctx.chat.id,
-                            progressMessage.message_id,
-                            undefined,
-                            `🌐 ${message}\n📊 Progression: ${sitesVisited}/${maxSites} sites analysés`
-                        );
+                        const progressText = `🌐 ${message}\n📊 Progression: ${sitesVisited}/${maxSites} sites analysés`;
+                        await messageSender.sendMessage(userId, progressText);
                         lastProgressUpdate = now;
                     } catch (e) {
                         // Ignorer les erreurs de mise à jour du message
@@ -92,13 +87,6 @@ export class WebSearchSkill extends SkillBase {
                 onProgress
             );
 
-            // Supprimer le message de progression
-            try {
-                await ctx.telegram.deleteMessage(ctx.chat.id, progressMessage.message_id);
-            } catch (e) {
-                // Ignorer si le message ne peut pas être supprimé
-            }
-
             // Formater la réponse
             const formattedMessage = this.formatWebSearchResponse(searchResponse);
 
@@ -106,7 +94,7 @@ export class WebSearchSkill extends SkillBase {
                 success: true,
                 message: formattedMessage,
                 requiresResponse: true,
-                responseData: { searchResponse }
+                responseData: { searchResponse, skillName: 'web_search' }
             };
 
         } catch (error) {

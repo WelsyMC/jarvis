@@ -1,4 +1,4 @@
-import { SkillBase, SkillExecutionResult } from "./base/SkillBase";
+import { SkillBase, SkillExecutionResult, SkillData, IMessageSender } from "./base/SkillBase";
 import { Context, NarrowedContext } from "telegraf";
 import { Update, Message } from "telegraf/typings/core/types/typegram";
 
@@ -13,6 +13,24 @@ import { SystemInfoSkill } from "./implementations/SystemInfoSkill";
 export interface SkillRegistration {
     skill: SkillBase;
     enabled: boolean;
+}
+
+/**
+ * Interface pour un skill détecté avec ses données
+ */
+export interface DetectedSkill {
+    skill: SkillBase;
+    data: SkillData;
+    skillName: string;
+}
+
+/**
+ * Interface pour les résultats d'exécution de plusieurs skills
+ */
+export interface MultiSkillExecutionResult {
+    results: Array<SkillExecutionResult & { skillName: string }>;
+    combinedMessage: string;
+    allSuccessful: boolean;
 }
 
 /**
@@ -110,27 +128,17 @@ export class SkillManager {
     }
 
     /**
-     * Traite la détection de skills et exécute le skill approprié
+     * Détecte tous les skills présents dans la réponse de l'IA
      * @param skillDetection La réponse de détection des skills de l'IA
-     * @param ctx Le contexte Telegram
-     * @param userId L'ID de l'utilisateur
-     * @returns Le résultat d'exécution du skill ou null si aucun skill détecté
+     * @returns Liste des skills détectés avec leurs données
      */
-    public async processSkillDetection(
-        skillDetection: string,
-        ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>,
-        userId: string
-    ): Promise<SkillExecutionResult | null> {
-        // Vérifier si aucun skill n'est nécessaire
+    public detectAllSkills(skillDetection: string): DetectedSkill[] {
+        const detectedSkills: DetectedSkill[] = [];
+        
         if (skillDetection.includes('[NO_SKILL]')) {
-            return null;
+            return detectedSkills;
         }
 
-        console.log(`[SKILL_MANAGER] Traitement de la détection: ${skillDetection}`);
-
-        // Parcourir tous les skills activés pour trouver une correspondance
-        let resultPromise: Promise<SkillExecutionResult | null> = Promise.resolve(null);
-        
         this.skills.forEach((registration) => {
             if (!registration.enabled) {
                 return;
@@ -139,37 +147,202 @@ export class SkillManager {
             const skill = registration.skill;
             const detection = skill.detectSkill(skillDetection);
 
-            if (detection.isDetected && resultPromise) {
-                console.log(`[SKILL_MANAGER] Skill '${skill.name}' détecté, exécution...`);
-                
-                resultPromise = (async () => {
-                    try {
-                        const result = await skill.execute(detection.data!, ctx, userId);
-                        
-                        if (result.success) {
-                            console.log(`[SKILL_MANAGER] Skill '${skill.name}' exécuté avec succès`);
-                        } else {
-                            console.error(`[SKILL_MANAGER] Échec de l'exécution du skill '${skill.name}':`, result.error);
-                        }
-                        
-                        return result;
-                    } catch (error) {
-                        console.error(`[SKILL_MANAGER] Erreur lors de l'exécution du skill '${skill.name}':`, error);
-                        return {
-                            success: false,
-                            error: `Erreur lors de l'exécution du skill ${skill.name}`
-                        };
-                    }
-                })();
+            if (detection.isDetected) {
+                console.log(`[SKILL_MANAGER] Skill '${skill.name}' détecté`);
+                detectedSkills.push({
+                    skill: skill,
+                    data: detection.data!,
+                    skillName: skill.name
+                });
             }
         });
 
-        const result = await resultPromise;
-        if (!result) {
-            console.log(`[SKILL_MANAGER] Aucun skill correspondant trouvé pour: ${skillDetection}`);
+        return detectedSkills;
+    }
+
+    /**
+     * Exécute plusieurs skills en séquence
+     * @param detectedSkills Liste des skills à exécuter
+     * @param messageSender Interface pour envoyer des messages
+     * @param userId L'ID de l'utilisateur
+     * @returns Résultat combiné de tous les skills
+     */
+    public async executeMultipleSkills(
+        detectedSkills: DetectedSkill[],
+        messageSender: IMessageSender | null,
+        userId: string
+    ): Promise<MultiSkillExecutionResult> {
+        const results: Array<SkillExecutionResult & { skillName: string }> = [];
+        let combinedMessage = '';
+        let allSuccessful = true;
+
+        for (const detected of detectedSkills) {
+            console.log(`[SKILL_MANAGER] Exécution du skill '${detected.skillName}'...`);
+            
+            // Skip if messageSender is null - some skills require message sending capability
+            if (!messageSender) {
+                console.warn(`[SKILL_MANAGER] Skill '${detected.skillName}' ne peut pas être exécuté sans capacité d'envoi de messages`);
+                results.push({
+                    success: false,
+                    error: `Le skill ${detected.skillName} nécessite une capacité d'envoi de messages valide`,
+                    skillName: detected.skillName
+                });
+                allSuccessful = false;
+                continue;
+            }
+            
+            try {
+                const result = await detected.skill.execute(detected.data, userId, messageSender);
+                results.push({ ...result, skillName: detected.skillName });
+
+                if (result.success) {
+                    console.log(`[SKILL_MANAGER] Skill '${detected.skillName}' exécuté avec succès`);
+                    if (result.message) {
+                        combinedMessage += (combinedMessage ? '\n\n' : '') + result.message;
+                    }
+                } else {
+                    console.error(`[SKILL_MANAGER] Échec du skill '${detected.skillName}':`, result.error);
+                    allSuccessful = false;
+                }
+            } catch (error) {
+                console.error(`[SKILL_MANAGER] Erreur lors de l'exécution du skill '${detected.skillName}':`, error);
+                results.push({
+                    success: false,
+                    error: `Erreur lors de l'exécution du skill ${detected.skillName}`,
+                    skillName: detected.skillName
+                });
+                allSuccessful = false;
+            }
+        }
+
+        return {
+            results,
+            combinedMessage,
+            allSuccessful
+        };
+    }
+
+    /**
+     * Traite la détection de skills et exécute les skills appropriés (multi-skills)
+     * @param skillDetection La réponse de détection des skills de l'IA
+     * @param messageSender Interface pour envoyer des messages
+     * @param userId L'ID de l'utilisateur
+     * @returns Le résultat d'exécution des skills ou null si aucun skill détecté
+     */
+    public async processSkillDetection(
+        skillDetection: string,
+        messageSender: IMessageSender | null,
+        userId: string
+    ): Promise<SkillExecutionResult | null> {
+        const detectedSkills = this.detectAllSkills(skillDetection);
+        
+        if (detectedSkills.length === 0) {
+            console.log(`[SKILL_MANAGER] Aucun skill détecté`);
+            return null;
+        }
+
+        console.log(`[SKILL_MANAGER] ${detectedSkills.length} skill(s) détecté(s): ${detectedSkills.map(s => s.skillName).join(', ')}`);
+
+        // Exécuter tous les skills en séquence
+        const multiResult = await this.executeMultipleSkills(detectedSkills, messageSender, userId);
+
+        // Retourner un résultat combiné
+        if (multiResult.results.length === 1) {
+            return multiResult.results[0];
+        }
+
+        return {
+            success: multiResult.allSuccessful,
+            message: multiResult.combinedMessage,
+            requiresResponse: true,
+            responseData: {
+                multiSkill: true,
+                skillNames: detectedSkills.map(s => s.skillName),
+                results: multiResult.results
+            }
+        };
+    }
+
+    /**
+     * Exécute un prompt avec détection et exécution de skills (pour le cron)
+     * Supporte le chaînage des skills avec passage de contexte
+     * Ne nécessite pas de contexte Telegram
+     * @param prompt Le prompt à traiter
+     * @param userId L'ID de l'utilisateur
+     * @returns Le message de réponse combiné
+     */
+    public async executePromptWithSkills(
+        prompt: string,
+        userId: string
+    ): Promise<{ response: string; skillsUsed: string[] }> {
+        // Import dynamique pour éviter les dépendances circulaires
+        const { detectSkills, sendMessageToAI } = await import('../ai_bridge/ai_bridge');
+        const { cronMessageSender } = await import('../ai_bridge/message_sender');
+        
+        console.log(`[SKILL_MANAGER] Exécution du prompt avec skills: "${prompt}"`);
+        
+        // Étape 1: Détecter les skills nécessaires
+        const skillDetection = await detectSkills(prompt);
+        console.log(`[SKILL_MANAGER] Détection: ${skillDetection}`);
+
+        const detectedSkills = this.detectAllSkills(skillDetection);
+        
+        if (detectedSkills.length === 0) {
+            // Aucun skill nécessaire, utiliser l'IA directement
+            console.log(`[SKILL_MANAGER] Aucun skill détecté, utilisation de l'IA directement`);
+            const aiResponse = await sendMessageToAI(prompt);
+            return { response: aiResponse, skillsUsed: [] };
+        }
+
+        console.log(`[SKILL_MANAGER] Skills détectés pour cron: ${detectedSkills.map(s => s.skillName).join(', ')}`);
+
+        // Étape 2: Exécuter les skills en chaîne avec passage de contexte
+        const allSkillsUsed: string[] = [];
+        let accumulatedContext = '';
+        
+        for (const detected of detectedSkills) {
+            console.log(`[SKILL_MANAGER] Exécution du skill '${detected.skillName}' en chaîne...`);
+            allSkillsUsed.push(detected.skillName);
+            
+            try {
+                const result = await detected.skill.execute(detected.data, userId, cronMessageSender);
+                
+                if (result.success) {
+                    console.log(`[SKILL_MANAGER] Skill '${detected.skillName}' exécuté avec succès`);
+                    if (result.message) {
+                        // Accumuler le contexte des résultats précédents
+                        accumulatedContext += (accumulatedContext ? '\n\n' : '') + `[${detected.skillName}]: ${result.message}`;
+                    }
+                } else {
+                    console.error(`[SKILL_MANAGER] Échec du skill '${detected.skillName}':`, result.error);
+                    accumulatedContext += (accumulatedContext ? '\n\n' : '') + `[${detected.skillName}] ERREUR: ${result.error}`;
+                }
+            } catch (error) {
+                console.error(`[SKILL_MANAGER] Erreur lors de l'exécution du skill '${detected.skillName}':`, error);
+                accumulatedContext += (accumulatedContext ? '\n\n' : '') + `[${detected.skillName}] ERREUR: ${error}`;
+            }
         }
         
-        return result;
+        if (!accumulatedContext) {
+            return {
+                response: "La tâche a été exécutée.",
+                skillsUsed: allSkillsUsed
+            };
+        }
+
+        // Étape 3: Demander à l'IA de formuler une réponse avec tout le contexte accumulé
+        const finalPrompt = `L'utilisateur avait demandé: "${prompt}"
+
+Voici les informations récupérées:
+${accumulatedContext}
+
+Réponds à l'utilisateur de manière naturelle et concise avec ces informations.`;
+        
+        const finalResponse = await sendMessageToAI(finalPrompt);
+        return {
+            response: finalResponse,
+            skillsUsed: allSkillsUsed
+        };
     }
 
     /**

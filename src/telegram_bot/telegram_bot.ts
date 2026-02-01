@@ -2,9 +2,11 @@ import { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Update, Message } from "telegraf/typings/core/types/typegram";
 import { sendMessageToAI, detectSkills } from "../ai_bridge/ai_bridge";
 import { cronBridge } from "../ai_bridge/cron_bridge";
+import { cronMessageSender } from "../ai_bridge/message_sender";
 import { skillManager } from "../skills";
+import { IMessageSender } from "../skills/base/SkillBase";
 
-export class TelegramBot {
+export class TelegramBot implements IMessageSender {
     private bot: Telegraf;
     private allowedUserId: string;
 
@@ -22,15 +24,18 @@ export class TelegramBot {
      * Configure le callback du cron bridge pour envoyer des messages
      */
     private setupCronBridge() {
+        // Initialiser le message sender pour le cron
+        cronMessageSender.setTelegrafInstance(this.bot);
+        
         cronBridge.setTaskCompleteCallback(async (userId: string, response: string) => {
             await this.sendMessageToUser(userId, response);
         });
     }
 
     /**
-     * Envoie un message à un utilisateur spécifique
+     * Envoie un message à un utilisateur spécifique (implémente IMessageSender)
      */
-    public async sendMessageToUser(userId: string, message: string, parseMode?: 'MarkdownV2' | 'Markdown' | 'HTML'): Promise<void> {
+    public async sendMessage(userId: string, message: string, parseMode?: 'MarkdownV2' | 'Markdown' | 'HTML'): Promise<void> {
         try {
             const options = parseMode ? { parse_mode: parseMode } : {};
             await this.bot.telegram.sendMessage(userId, message, options);
@@ -38,6 +43,13 @@ export class TelegramBot {
         } catch (error) {
             console.error(`[TELEGRAM] Erreur lors de l'envoi du message à ${userId}:`, error);
         }
+    }
+
+    /**
+     * Alias pour rétrocompatibilité
+     */
+    public async sendMessageToUser(userId: string, message: string, parseMode?: 'MarkdownV2' | 'Markdown' | 'HTML'): Promise<void> {
+        return this.sendMessage(userId, message, parseMode);
     }
 
     private setupHandlers() {
@@ -71,14 +83,26 @@ export class TelegramBot {
                     await ctx.reply(`🔍 Détection de skills:\n\n${skillDetection}`);
 
                     // ÉTAPE 2: Traitement via le gestionnaire de skills
-                    const skillResult = await skillManager.processSkillDetection(skillDetection, ctx, userId);
+                    const skillResult = await skillManager.processSkillDetection(skillDetection, this, userId);
 
                     if (skillResult) {
-                        // Un skill a été exécuté
+                        // Un ou plusieurs skills ont été exécutés
                         if (skillResult.success && skillResult.requiresResponse && skillResult.message) {
-                            // si le skill n'est pas web_search, regarder si il faut envoyer toutes les infos ou juste une partie
-                            if ("web_search" !== skillResult.responseData?.skillName) {
-                                // Sûrement un skill système du coup, on filtre ce qu'il y a a savoir.
+                            // Vérifier si c'est un skill cron - ne pas répondre avec les données du cron
+                            const isCronSkill = skillResult.responseData?.skillName === 'cron' || 
+                                               (skillResult.responseData?.skillNames && skillResult.responseData.skillNames.includes('cron'));
+                            
+                            // Pour le cron, on envoie directement la confirmation
+                            if (isCronSkill && !skillResult.responseData?.multiSkill) {
+                                await ctx.reply(`⏰ ${skillResult.message}`);
+                            }
+                            // Pour web_search ou multi-skills avec web_search, formater la réponse
+                            else if (skillResult.responseData?.skillName === 'web_search' || 
+                                    (skillResult.responseData?.skillNames && skillResult.responseData.skillNames.includes('web_search'))) {
+                                const parseMode = skillResult.message.includes('*') || skillResult.message.includes('_') ? 'MarkdownV2' : undefined;
+                                await ctx.reply(`💬 Réponse:\n\n${skillResult.message}`, parseMode ? { parse_mode: parseMode } : {});
+                            } else {
+                                // Autre skill, filtrer ce qu'il y a à savoir
                                 const aiFinalAnswer = await sendMessageToAI(
                                     `Analyse la question que je vais te poser, analyse la réponse que je te donne, et réponds moi seulement avec les informations qui m'intéressent.
                                     
@@ -89,15 +113,11 @@ export class TelegramBot {
 
                                 const parseMode = aiFinalAnswer.includes('*') || aiFinalAnswer.includes('_') ? 'MarkdownV2' : undefined;
                                 await ctx.reply(`💬 Réponse:\n\n${aiFinalAnswer}`, parseMode ? { parse_mode: parseMode } : {});
-                            } else {
-                                // Skill web_search, formater la réponse
-                                const parseMode = skillResult.message.includes('*') || skillResult.message.includes('_') ? 'MarkdownV2' : undefined;
-                                await ctx.reply(`💬 Réponse:\n\n${skillResult.message}`, parseMode ? { parse_mode: parseMode } : {});
                             }
 
                         } else if (!skillResult.success && skillResult.error) {
                             // Afficher l'erreur
-                            await ctx.reply(skillResult.error);
+                            await ctx.reply(`❌ ${skillResult.error}`);
                         }
                     } else {
                         // Aucun skill nécessaire, conversation normale
@@ -107,7 +127,7 @@ export class TelegramBot {
                     console.log("=".repeat(50));
                 } catch (error) {
                     console.error("[TELEGRAM] Erreur lors du traitement:", error);
-                    ctx.reply("Sorry, there was an error processing your request.");
+                    ctx.reply("Désolé, une erreur s'est produite lors du traitement de ta demande.");
                 }
             });
             return;

@@ -1,6 +1,4 @@
-import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult } from "../base/SkillBase";
-import { Context, NarrowedContext } from "telegraf";
-import { Update, Message } from "telegraf/typings/core/types/typegram";
+import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult, IMessageSender } from "../base/SkillBase";
 
 /**
  * Interface pour les données du skill System Info
@@ -50,8 +48,8 @@ export class SystemInfoSkill extends SkillBase {
      */
     public async execute(
         data: SkillData,
-        ctx: NarrowedContext<Context<Update>, Update.MessageUpdate<Message>>,
-        userId: string
+        userId: string,
+        messageSender: IMessageSender
     ): Promise<SkillExecutionResult> {
         try {
             const systemData = data as SystemInfoSkillData;
@@ -70,7 +68,7 @@ export class SystemInfoSkill extends SkillBase {
                 success: true,
                 message: formattedMessage,
                 requiresResponse: true,
-                responseData: { systemInfo }
+                responseData: { systemInfo, skillName: 'system_info' }
             };
 
         } catch (error) {
