@@ -1,5 +1,5 @@
-import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult, IMessageSender } from "../base/SkillBase";
-import { webSearchBridge, WebSearchResponse, WebSearchProgressCallback } from "../../ai_bridge/web_search_bridge";
+import { SkillBase, SkillData, SkillDetectionResult, SkillExecutionResult, IMessageSender } from "../../base/SkillBase";
+import { webSearchBridge, WebSearchResponse, WebSearchProgressCallback } from "../../../ai_bridge/web_search_bridge";
 
 /**
  * Interface pour les données du skill WebSearch
