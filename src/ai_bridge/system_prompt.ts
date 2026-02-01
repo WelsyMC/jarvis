@@ -116,6 +116,28 @@ export class SystemPromptManager {
    → [SKILL: calculator]
       Expression: "10 * 7"\n\n`;
       
+                } else if (skillInfo.name === 'GMail') {
+                    skillsSection += `   - Récupère et lit les e-mails récents de Gmail
+   - Mots-clés: "mails", "e-mails", "emails", "gmail", "boîte de réception", "inbox", "messages", "courrier"
+   - Format de sortie:
+     [SKILL: gmail]
+   
+   Exemples:
+   User: "Liste mes mails"
+   → [SKILL: gmail]
+   
+   User: "Résume mes mails"
+   → [SKILL: gmail]
+   
+   User: "Quels sont mes derniers e-mails?"
+   → [SKILL: gmail]
+   
+   User: "Y a-t-il des nouveaux messages?"
+   → [SKILL: gmail]
+   
+   User: "Montre ma boîte de réception"
+   → [SKILL: gmail]\n\n`;
+      
                 } else {
                     // Skill générique - format basique
                     skillsSection += `   - Format de sortie:
@@ -152,6 +174,12 @@ export class SystemPromptManager {
             if (activeSkills.find(s => s.name === 'calculator')) {
                 examplesSection += `
         User: "Combien font 2 + 2?" → [SKILL: calculator] Expression: "2 + 2"`;
+            }
+            
+            if (activeSkills.find(s => s.name === 'GMail')) {
+                examplesSection += `
+        User: "Liste mes mails" → [SKILL: gmail]
+        User: "Résume mes e-mails" → [SKILL: gmail]`;
             }
         } else {
             skillsSection = 'AUCUN SKILL DISPONIBLE - Toutes les demandes devraient retourner [NO_SKILL]\n\n';

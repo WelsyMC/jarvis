@@ -101,14 +101,30 @@ export class TelegramBot implements IMessageSender {
                                     (skillResult.responseData?.skillNames && skillResult.responseData.skillNames.includes('web_search'))) {
                                 const parseMode = skillResult.message.includes('*') || skillResult.message.includes('_') ? 'MarkdownV2' : undefined;
                                 await ctx.reply(`💬 Réponse:\n\n${skillResult.message}`, parseMode ? { parse_mode: parseMode } : {});
+                            }
+                            // Traitement spécifique pour Gmail
+                            else if (skillResult.responseData?.skillName === 'gmail') {
+                                const aiFinalAnswer = await sendMessageToAI(
+                                    `Tu dois résumer ou présenter des e-mails. UTILISE UNIQUEMENT les données ci-dessous.
+
+Demande de l'utilisateur: "${text}"
+
+Voici les e-mails récupérés (DONNÉES RÉELLES - ne les invente pas):
+${skillResult.message}
+
+Réponds à la demande de l'utilisateur en te basant EXCLUSIVEMENT sur ces données. Si l'utilisateur demande un résumé, résume ces mails. Si il demande la liste, liste ces mails.`
+                                );
+
+                                await ctx.reply(`📧 ${aiFinalAnswer}`);
                             } else {
                                 // Autre skill, filtrer ce qu'il y a à savoir
                                 const aiFinalAnswer = await sendMessageToAI(
-                                    `Analyse la question que je vais te poser, analyse la réponse que je te donne, et réponds moi seulement avec les informations qui m'intéressent.
-                                    
-                                    Question: ${text}
-                                    Réponse à filtrer: ${skillResult.message}
-                                    `
+                                    `DONNÉES RÉELLES (ne les invente pas, utilise-les):
+${skillResult.message}
+
+Demande de l'utilisateur: "${text}"
+
+Réponds en utilisant UNIQUEMENT les données ci-dessus. NE FABRIQUE PAS d'informations.`
                                 );
 
                                 const parseMode = aiFinalAnswer.includes('*') || aiFinalAnswer.includes('_') ? 'MarkdownV2' : undefined;

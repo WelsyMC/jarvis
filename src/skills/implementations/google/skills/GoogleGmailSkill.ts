@@ -74,6 +74,8 @@ export class GoogleGmailSkill extends SkillBase {
             };
         }
 
+        const array = [];
+
         // Afficher les détails des mails récupérés
         for (const message of response.data.messages || []) {
             const details = await this.gmailClient?.getMessageDetails(message.id!);
@@ -82,15 +84,25 @@ export class GoogleGmailSkill extends SkillBase {
             const date = headers.find((h: any) => h.name === 'Date')?.value || 'Unknown';
             const subject = headers.find((h: any) => h.name === 'Subject')?.value || '(No subject)';
             
-            console.log(`📧 From: ${from} | Date: ${date} | Subject: ${subject}`);
+            array.push({
+                from,
+                date,
+                subject
+            });
         }
+
+        // Formater les mails en texte lisible pour l'IA
+        const formattedMessages = array.map((mail, index) => 
+            `Mail ${index + 1}:\n  De: ${mail.from}\n  Date: ${mail.date}\n  Sujet: ${mail.subject}`
+        ).join("\n\n");
         
         return {
             success: true,
-            message: "Aucun nouveau mail à lire.",
+            message: formattedMessages,
             requiresResponse: true,
             responseData: {
-                message: "Aucun nouveau mail à lire."
+                messages: array,
+                skillName: 'gmail'
             }
         };
     }
