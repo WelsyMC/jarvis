@@ -1,4 +1,4 @@
-import { SkillBase, SkillExecutionResult, SkillData, IMessageSender } from "./base/SkillBase";
+import { SkillBase, SkillExecutionResult, SkillData, IMessageSender } from "@base/SkillBase";
 import { Context, NarrowedContext } from "telegraf";
 import { Update, Message } from "telegraf/typings/core/types/typegram";
 
@@ -7,6 +7,8 @@ import { CronSkill } from "./implementations/CronSkill";
 import { WebSearchSkill } from "./implementations/web/WebSearchSkill";
 import { SystemInfoSkill } from "./implementations/SystemInfoSkill";
 import { CalculatorSkill } from "./implementations/CalculatorSkill";
+import { GoogleGmailSkill } from "./implementations/google/skills/GoogleGmailSkill";
+import { GoogleSkillModule } from "./implementations/google/GoogleSkillModule";
 
 /**
  * Interface pour l'enregistrement des skills
@@ -51,6 +53,11 @@ export class SkillManager {
         this.registerSkill(new CronSkill());
         this.registerSkill(new WebSearchSkill());
         this.registerSkill(new SystemInfoSkill());
+
+        GoogleSkillModule.init().forEach(skill => {
+            this.registerSkill(skill);
+        });
+        
         this.registerSkill(new CalculatorSkill()); // Activé pour démonstration
     }
 

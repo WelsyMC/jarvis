@@ -7,10 +7,15 @@
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
+    "baseUrl": "src",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "paths": {
+      "@skills/*": ["skills/*"],
+      "@base/*": ["skills/base/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

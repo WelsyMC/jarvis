@@ -1,5 +1,6 @@
 import { config } from "dotenv";
 import { TelegramBot } from "./telegram_bot/telegram_bot";
+import { GoogleSkillModule } from "@skills/implementations/google/GoogleSkillModule";
 
 config({ path: ".env.local" });
 config({ path: ".env" });
