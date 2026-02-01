@@ -60,6 +60,8 @@ export class TelegramBot {
             let text = ctx.message.text;
             const userId = ctx.from.id.toString();
             
+            console.log("=".repeat(50));
+            console.log(`[TELEGRAM] Message reçu de ${ctx.from.username || ctx.from.id}: ${text}`);
             ctx.sendChatAction("typing").then(async () => {
                 try {
                     // ÉTAPE 1: Détection des skills
@@ -86,6 +88,7 @@ export class TelegramBot {
                         const aiResponse = await sendMessageToAI(text);
                         await ctx.reply(aiResponse);
                     }
+                    console.log("=".repeat(50));
                 } catch (error) {
                     console.error("[TELEGRAM] Erreur lors du traitement:", error);
                     ctx.reply("Sorry, there was an error processing your request.");
