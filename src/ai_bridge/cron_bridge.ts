@@ -2,7 +2,7 @@
  * Cron Bridge - Permet de planifier des tâches qui seront exécutées après un délai
  */
 
-import { skillManager } from '../skills';
+import { getSkillManager } from '../skills';
 
 interface ScheduledTask {
     id: string;
@@ -76,7 +76,7 @@ export class CronBridge {
 
         try {
             // Utiliser le système de skills pour traiter le prompt
-            const result = await skillManager.executePromptWithSkills(
+            const result = await getSkillManager().executePromptWithSkills(
                 task.originalPrompt,
                 task.userId
             );

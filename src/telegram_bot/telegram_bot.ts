@@ -3,7 +3,7 @@ import { Update, Message } from "telegraf/typings/core/types/typegram";
 import { sendMessageToAI, detectSkills } from "../ai_bridge/ai_bridge";
 import { cronBridge } from "../ai_bridge/cron_bridge";
 import { cronMessageSender } from "../ai_bridge/message_sender";
-import { skillManager } from "../skills";
+import { getSkillManager } from "../skills";
 import { IMessageSender } from "../skills/base/SkillBase";
 
 export class TelegramBot implements IMessageSender {
@@ -83,7 +83,7 @@ export class TelegramBot implements IMessageSender {
                     await ctx.reply(`🔍 Détection de skills:\n\n${skillDetection}`);
 
                     // ÉTAPE 2: Traitement via le gestionnaire de skills
-                    const skillResult = await skillManager.processSkillDetection(skillDetection, this, userId);
+                    const skillResult = await getSkillManager().processSkillDetection(skillDetection, this, userId);
 
                     if (skillResult) {
                         // Un ou plusieurs skills ont été exécutés
@@ -137,7 +137,7 @@ export class TelegramBot implements IMessageSender {
     public launch() {
         this.bot.launch();
         console.log("Bot Telegram démarré et en écoute des messages privés...");
-        console.log(`Skills disponibles: ${skillManager.getSkills().map(s => s.name).join(', ')}`);
+        console.log(`Skills disponibles: ${getSkillManager().getSkills().map(s => s.name).join(', ')}`);
 
         // Gérer l'arrêt propre du bot
         process.once("SIGINT", async () => {

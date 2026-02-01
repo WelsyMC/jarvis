@@ -2,7 +2,7 @@
  * Utilitaire pour tester et déboguer le système de skills dynamique
  */
 
-import { skillManager } from '../skills';
+import { getSkillManager } from '../skills';
 import { SystemPromptManager } from '../ai_bridge/system_prompt';
 
 /**
@@ -24,7 +24,7 @@ export function debugSkillDetectionPrompt(): void {
 export function debugActiveSkills(): void {
     console.log('\n=== SKILLS ACTIFS ===');
     
-    const skillsInfo = skillManager.getSkillsInfo();
+    const skillsInfo = getSkillManager().getSkillsInfo();
     const activeSkills = skillsInfo.filter(skill => skill.enabled);
     const inactiveSkills = skillsInfo.filter(skill => !skill.enabled);
     
@@ -54,12 +54,12 @@ export function testDynamicSkillToggling(): void {
     
     // Désactiver un skill
     console.log('Désactivation du skill web_search...');
-    skillManager.disableSkill('web_search');
+    getSkillManager().disableSkill('web_search');
     debugActiveSkills();
     
     // Réactiver le skill
     console.log('Réactivation du skill web_search...');
-    skillManager.enableSkill('web_search');
+    getSkillManager().enableSkill('web_search');
     debugActiveSkills();
     
     console.log('=== FIN DU TEST ===\n');
@@ -78,16 +78,16 @@ export function demonstrateDynamicPrompt(): void {
     debugSkillDetectionPrompt();
     
     console.log('2. Désactivation de quelques skills...');
-    skillManager.disableSkill('system_info');
-    skillManager.disableSkill('web_search');
+    getSkillManager().disableSkill('system_info');
+    getSkillManager().disableSkill('web_search');
     
     console.log('3. Prompt mis à jour automatiquement:');
     debugActiveSkills();
     debugSkillDetectionPrompt();
     
     console.log('4. Réactivation des skills...');
-    skillManager.enableSkill('system_info');
-    skillManager.enableSkill('web_search');
+    getSkillManager().enableSkill('system_info');
+    getSkillManager().enableSkill('web_search');
     
     console.log('5. Prompt final:');
     debugActiveSkills();

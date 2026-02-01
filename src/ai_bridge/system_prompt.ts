@@ -1,4 +1,4 @@
-import { skillManager } from '../skills';
+import { getSkillManager } from '../skills';
 
 export class SystemPromptManager {
     private systemPrompt: string;
@@ -12,7 +12,7 @@ export class SystemPromptManager {
      * Génère dynamiquement la liste des skills disponibles
      */
     public getSkillDetectionPrompt(): string {
-        const skillsInfo = skillManager.getSkillsInfo();
+        const skillsInfo = getSkillManager().getSkillsInfo();
         const activeSkills = skillsInfo.filter(skill => skill.enabled);
         
         let skillsSection = '';
@@ -276,7 +276,7 @@ export class SystemPromptManager {
      * Récupère la liste des skills actifs pour debugging
      */
     public getActiveSkillsList(): string[] {
-        return skillManager.getSkillsInfo()
+        return getSkillManager().getSkillsInfo()
             .filter(skill => skill.enabled)
             .map(skill => skill.name);
     }

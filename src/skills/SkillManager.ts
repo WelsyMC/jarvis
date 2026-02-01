@@ -47,6 +47,13 @@ export class SkillManager {
     }
 
     /**
+     * Safely initialize skills (can be called after env vars are loaded)
+     */
+    public static createInstance(): SkillManager {
+        return new SkillManager();
+    }
+
+    /**
      * Enregistre les skills par défaut
      */
     private registerDefaultSkills() {
@@ -381,6 +388,3 @@ Réponds à l'utilisateur de manière naturelle et concise avec ces informations
         console.log(`[SKILL_MANAGER] Configuration des skills mise à jour. Skills actifs: ${this.getSkills(true).map(s => s.name).join(', ')}`);
     }
 }
-
-// Instance singleton du gestionnaire de skills
-export const skillManager = new SkillManager();

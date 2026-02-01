@@ -64,6 +64,9 @@ export class GoogleGmailSkill extends SkillBase {
         userId: string,
         messageSender: any
     ): Promise<SkillExecutionResult> {
+        const messages = await this.gmailClient?.listMessages(5);
+
+        console.log(messages);
         return {
             success: true,
             message: "GMail executed successfully.",
